@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
 
@@ -27,9 +27,18 @@ const ARM_RETIRE_TIMEOUT_MS = positiveInteger("FM_WATCH_ARM_RETIRE_TIMEOUT_MS", 
 const REARM_RETRY_BASE_MS = positiveInteger("FM_WATCH_REARM_RETRY_BASE_MS", 250);
 const REARM_RETRY_MAX_MS = positiveInteger("FM_WATCH_REARM_RETRY_MAX_MS", 4000);
 const REARM_RETRY_LIMIT = positiveInteger("FM_WATCH_REARM_RETRY_LIMIT", 5);
+// session.idle is the only re-arm trigger, so a session that never emits idle
+// (continuously busy, or recreated without an idle cycle) can leave the watcher
+// dark indefinitely. The watchdog re-arms off beacon freshness instead, reading
+// the same `state/.last-watcher-beat` and `FM_GUARD_GRACE` (default 300s)
+// liveness signal bin/fm-watch-arm.sh and bin/fm-guard.sh use. The interval
+// stays a small fraction of the grace window so recovery is prompt.
+const WATCHDOG_INTERVAL_MS = positiveInteger("FM_OPENCODE_WATCHDOG_INTERVAL_MS", 30000);
+const WATCHDOG_GRACE_SECONDS = positiveInteger("FM_GUARD_GRACE", 300);
 
 let child = null;
 let armStatus = "idle";
+let currentSessionID = "";
 let retryTimer = null;
 let retryFailures = 0;
 let launchInFlight = null;
@@ -543,15 +552,53 @@ async function ensureArm(paths, sessionID, client, predecessorArmPid = "", inclu
   return armAttempt(await waitForArmReady(armChild), armChild, includeArmChild);
 }
 
+// The watcher's liveness beacon: a beacon younger than the grace window means a
+// live cycle, and its absence or age means no healthy watcher owns supervision.
+function beaconFresh(paths, graceSeconds) {
+  try {
+    const ageSeconds = (Date.now() - statSync(`${paths.state}/.last-watcher-beat`).mtimeMs) / 1000;
+    return ageSeconds < graceSeconds;
+  } catch {
+    return false;
+  }
+}
+
+// The watchdog needs the root session id to deliver a later wake. Only a root
+// session.created sets it, so a subagent child session can never take over
+// wake delivery; the idle trigger below still arms from its own event.
+function trackRootSession(event) {
+  if (event.type !== "session.created") return;
+  const info = event.properties?.info;
+  if (!info || info.parentID) return;
+  const sessionID = event.properties?.sessionID ?? info.id ?? "";
+  if (sessionID) currentSessionID = sessionID;
+}
+
+// Re-arm supervision when the beacon says no healthy cycle is live, independent
+// of session.idle. ensureArm keeps every existing guard, so a healthy watcher,
+// an unowned lock, a non-primary root, and an in-flight launch are never
+// disturbed; a session id is still required to deliver a later wake.
+function startWatchdog(paths, client) {
+  const timer = setInterval(() => {
+    if (child || retryTimer || launchInFlight || restorationInFlight) return;
+    if (beaconFresh(paths, WATCHDOG_GRACE_SECONDS)) return;
+    if (!currentSessionID) return;
+    void ensureArm(paths, currentSessionID, client);
+  }, WATCHDOG_INTERVAL_MS);
+  timer.unref();
+}
+
 export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
   const root = worktree ? resolvePath(worktree) : await resolveRoot(directory);
   const paths = effectivePaths(root);
   globalThis[COORDINATOR_KEY] = {
     ensureArmed: (sessionID, activeClient) => ensureArm(paths, sessionID, activeClient ?? client),
   };
+  startWatchdog(paths, client);
 
   return {
     event: async ({ event }) => {
+      trackRootSession(event);
       if (event.type !== "session.idle") return;
       const sessionID = event.properties?.sessionID;
       if (!sessionID) return;

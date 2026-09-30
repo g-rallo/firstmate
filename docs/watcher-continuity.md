@@ -44,6 +44,11 @@ Each adapter:
 
 A failed follow-up never cancels continuity restoration.
 
+OpenCode's adapter also runs a beacon watchdog, because `session.idle` is its only other re-arm trigger.
+On an unref'd interval it reads the same `state/.last-watcher-beat` freshness and `FM_GUARD_GRACE` window the arm and guard use, and re-arms through the same path when no healthy cycle is live.
+That covers a session that never emits idle, such as one that stays continuously busy or is recreated without an idle cycle.
+Every arm-path guard still applies, so a healthy watcher, an unowned lock, and a non-primary root are never disturbed.
+
 ### Pi session replacement
 
 Pi same-process session replacement follows the generation-owner contract in `.pi/extensions/fm-primary-pi-watch.ts`:
