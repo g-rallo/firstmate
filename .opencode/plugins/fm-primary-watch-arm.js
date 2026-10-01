@@ -593,12 +593,12 @@ function trackRootSession(event) {
 function startWatchdog(paths, client) {
   const graceSeconds = positiveInteger("FM_GUARD_GRACE", pollDerivedGrace());
   const timer = setInterval(() => {
+    if (child || retryTimer || launchInFlight || restorationInFlight) return;
     if (beaconFresh(paths, graceSeconds)) {
       retryFailures = 0;
       failureEpisode = false;
       return;
     }
-    if (child || retryTimer || launchInFlight || restorationInFlight) return;
     if (failureEpisode) return;
     if (!currentSessionID) return;
     void ensureArm(paths, currentSessionID, client);

@@ -4760,6 +4760,67 @@ EOF
   pass "OpenCode watchdog honors the bounded retry limit after a stale-beacon recovery"
 }
 
+# A dead watcher can leave state/.last-watcher-beat fresh for the whole grace
+# window. That leftover beacon must not reset the bounded retry budget while a
+# launch or retry is still in flight, or the watchdog would spawn arms past the
+# limit and queue a failure prompt every interval. The explicit session.idle
+# trigger starts the episode because a fresh beacon keeps the watchdog quiet.
+test_opencode_watchdog_honors_bounded_retry_during_fresh_beacon() {
+  local plugin repo home log out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  repo="$TMP_ROOT/opencode-watchdog-fresh-bounded-root"
+  home="$TMP_ROOT/opencode-watchdog-fresh-bounded-home"
+  log="$TMP_ROOT/opencode-watchdog-fresh-bounded.log"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  : > "$home/state/task.meta"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+sleep 0.05
+exit 0
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" FM_OPENCODE_WATCHDOG_INTERVAL_MS=20 FM_GUARD_GRACE=600 FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 FM_WATCH_REARM_RETRY_LIMIT=2 node 2>&1 <<'EOF'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+let prompts = 0;
+const client = { session: { promptAsync: async () => { prompts += 1; } } };
+const hooks = await mod.FmPrimaryWatchArm({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+// A watcher touched the beacon and then died, leaving it fresh for the whole
+// grace window while the arm retries run.
+writeFileSync(`${process.env.FM_HOME}/state/.last-watcher-beat`, "");
+await hooks.event({ event: { type: "session.created", properties: { sessionID: "session-test", info: { id: "session-test" } } } });
+// With a fresh beacon the watchdog stays quiet, so session.idle is what starts
+// the episode whose retries must stay bounded.
+await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
+for (let i = 0; i < 400 && prompts === 0; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+if (prompts !== 1) throw new Error(`expected one exhausted-retry prompt, got ${prompts}`);
+for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+const rows = existsSync(process.env.FM_ARM_LOG)
+  ? readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n").filter(Boolean)
+  : [];
+if (rows.length !== 3) throw new Error(`bounded retry launched ${rows.length} arm cycles: ${rows.join(" | ")}`);
+if (prompts !== 1) throw new Error(`exhausted retry queued ${prompts} failure prompts`);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode watchdog must honor the bounded retry limit while a dead watcher's beacon is still fresh: $out"
+  [ -z "$out" ] || fail "OpenCode watchdog fresh-beacon bounded-retry test printed output: $out"
+  pass "OpenCode watchdog honors the bounded retry limit during a fresh leftover beacon"
+}
+
 test_pi_extension_reports_external_healthy_watcher
 test_pi_tool_returns_agent_tool_result
 test_pi_redundant_tool_call_is_owned_noop
@@ -4818,3 +4879,4 @@ test_opencode_watchdog_skips_foreign_lock
 test_opencode_watchdog_delivers_to_root_session_not_child
 test_opencode_watchdog_uses_poll_derived_grace
 test_opencode_watchdog_honors_bounded_retry_limit
+test_opencode_watchdog_honors_bounded_retry_during_fresh_beacon
