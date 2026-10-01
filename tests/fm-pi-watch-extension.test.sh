@@ -4651,6 +4651,74 @@ EOF
   pass "OpenCode watchdog delivers its wake to the root session, not a subagent child"
 }
 
+# A plugin reload or resumed session can miss session.created while the root
+# session stays open. The watchdog must still learn the root id from
+# session.updated, arm off a stale beacon, and deliver its wake to the root,
+# while a subagent child session.updated never clobbers that root id.
+test_opencode_watchdog_learns_root_from_session_updated() {
+  local plugin repo home log stop out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  repo="$TMP_ROOT/opencode-watchdog-updated-root"
+  home="$TMP_ROOT/opencode-watchdog-updated-home"
+  log="$TMP_ROOT/opencode-watchdog-updated.log"
+  stop="$TMP_ROOT/opencode-watchdog-updated.stop"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  : > "$home/state/task.meta"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --handling-delivered ]; then
+  exit 0
+fi
+printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+count=$(grep -c '^arm=' "$FM_ARM_LOG")
+if [ "$count" -eq 1 ]; then
+  printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+  printf 'signal: watchdog synthetic wake\n'
+  exit 0
+fi
+printf 'watcher: started pid=%s (beacon fresh) recovery-generation=fixture-generation\n' "$$"
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" FM_OPENCODE_WATCHDOG_INTERVAL_MS=20 node 2>&1 <<'EOF'
+import { existsSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+const promptSessions = [];
+const client = { session: { promptAsync: async (request) => { promptSessions.push(request.path.id); } } };
+const hooks = await mod.FmPrimaryWatchArm({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+// session.created is missed (plugin reload / resumed session): only
+// session.updated carries the root info.
+await hooks.event({ event: { type: "session.updated", properties: { info: { id: "root-session" } } } });
+// A subagent child session.updated must not displace the root.
+await hooks.event({ event: { type: "session.updated", properties: { info: { id: "child-session", parentID: "root-session" } } } });
+for (let i = 0; i < 250 && promptSessions.length === 0; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+if (promptSessions.length !== 1) throw new Error(`expected one wake prompt, got ${promptSessions.length}`);
+if (promptSessions[0] !== "root-session") throw new Error(`wake was delivered to ${promptSessions[0]}, not the root session`);
+// A fresh beacon keeps the watchdog from spawning a successor arm once this
+// one stops, so no fake arm outlives the test harness.
+writeFileSync(`${process.env.FM_HOME}/state/.last-watcher-beat`, "");
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+await new Promise((resolve) => setTimeout(resolve, 80));
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode watchdog must learn the root session from session.updated when session.created is missed: $out"
+  [ -z "$out" ] || fail "OpenCode watchdog session-updated test printed output: $out"
+  pass "OpenCode watchdog learns the root session from session.updated and ignores a child"
+}
+
 # A healthy watcher touches its beacon once per poll cycle, so on a long-poll
 # home its beacon legitimately ages past 300s. The watchdog must use the same
 # poll-derived grace the arm and guard use, not a flat 300 that would restart a
@@ -4957,6 +5025,7 @@ test_opencode_watchdog_rearms_stale_beacon
 test_opencode_watchdog_skips_healthy_watcher
 test_opencode_watchdog_skips_foreign_lock
 test_opencode_watchdog_delivers_to_root_session_not_child
+test_opencode_watchdog_learns_root_from_session_updated
 test_opencode_watchdog_uses_poll_derived_grace
 test_opencode_watchdog_uses_watcher_stale_grace_override
 test_opencode_watchdog_honors_bounded_retry_limit

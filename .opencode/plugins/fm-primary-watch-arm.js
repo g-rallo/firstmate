@@ -582,14 +582,19 @@ function beaconFresh(paths, graceSeconds) {
 }
 
 // The watchdog needs the root session id to deliver a later wake. Only a root
-// session.created sets it, so a subagent child session can never take over
+// session event sets it, so a subagent child session can never take over
 // wake delivery; the idle trigger below still arms from its own event.
-function trackRootSession(event) {
-  if (event.type !== "session.created") return;
+function rememberRootSession(event) {
   const info = event.properties?.info;
   if (!info || info.parentID) return;
   const sessionID = event.properties?.sessionID ?? info.id ?? "";
   if (sessionID) currentSessionID = sessionID;
+}
+
+function trackRootSession(event) {
+  if (event.type === "session.created" || event.type === "session.updated") {
+    rememberRootSession(event);
+  }
 }
 
 // Re-arm supervision when the beacon says no healthy cycle is live, independent
@@ -616,7 +621,10 @@ export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
   const root = worktree ? resolvePath(worktree) : await resolveRoot(directory);
   const paths = effectivePaths(root);
   globalThis[COORDINATOR_KEY] = {
-    ensureArmed: (sessionID, activeClient) => ensureArm(paths, sessionID, activeClient ?? client),
+    ensureArmed: (sessionID, activeClient) => {
+      if (sessionID && !currentSessionID) currentSessionID = sessionID;
+      return ensureArm(paths, sessionID, activeClient ?? client);
+    },
   };
   startWatchdog(paths, client);
 

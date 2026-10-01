@@ -45,7 +45,7 @@ Each adapter:
 A failed follow-up never cancels continuity restoration.
 
 OpenCode's adapter also runs a beacon watchdog, because `session.idle` is its only other re-arm trigger.
-On an unref'd interval it reads the same `state/.last-watcher-beat` freshness and `FM_GUARD_GRACE` window the arm and guard use, and re-arms through the same path when no healthy cycle is live.
+On an unref'd interval it reads the same `state/.last-watcher-beat` freshness and the watcher's stale-grace precedence (`FM_WATCHER_STALE_GRACE` first, then `FM_GUARD_GRACE`, then the poll-derived `max(300, FM_POLL+60)`), and re-arms through the same path when no healthy cycle is live.
 That covers a session that never emits idle, such as one that stays continuously busy or is recreated without an idle cycle.
 Every arm-path guard still applies, so a healthy watcher, an unowned lock, and a non-primary root are never disturbed.
 
