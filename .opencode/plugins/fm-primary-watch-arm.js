@@ -30,17 +30,26 @@ const REARM_RETRY_LIMIT = positiveInteger("FM_WATCH_REARM_RETRY_LIMIT", 5);
 // session.idle is the only re-arm trigger, so a session that never emits idle
 // (continuously busy, or recreated without an idle cycle) can leave the watcher
 // dark indefinitely. The watchdog re-arms off beacon freshness instead, reading
-// the same `state/.last-watcher-beat` and `FM_GUARD_GRACE` (default 300s)
-// liveness signal bin/fm-watch-arm.sh and bin/fm-guard.sh use. The interval
-// stays a small fraction of the grace window so recovery is prompt.
+// the same `state/.last-watcher-beat` liveness signal bin/fm-watch-arm.sh and
+// bin/fm-guard.sh use and resolving FM_GUARD_GRACE through the same poll-derived
+// default. The interval stays a small fraction of the grace window so recovery
+// is prompt.
 const WATCHDOG_INTERVAL_MS = positiveInteger("FM_OPENCODE_WATCHDOG_INTERVAL_MS", 30000);
-const WATCHDOG_GRACE_SECONDS = positiveInteger("FM_GUARD_GRACE", 300);
+
+// A healthy watcher touches its beacon once per poll cycle, so its beacon can
+// legitimately age up to FM_POLL seconds between touches. bin/fm-wake-lib.sh
+// fm_poll_derived_grace owns the max(300, FM_POLL+60) default mirrored here; a
+// flat 300 would restart a healthy long-poll watcher.
+function pollDerivedGrace() {
+  return Math.max(300, positiveInteger("FM_POLL", 15) + 60);
+}
 
 let child = null;
 let armStatus = "idle";
 let currentSessionID = "";
 let retryTimer = null;
 let retryFailures = 0;
+let failureEpisode = false;
 let launchInFlight = null;
 let restorationInFlight = null;
 let armClose = new WeakMap();
@@ -381,6 +390,7 @@ async function restoreAfterActionableClose(paths, sessionID, client, predecessor
 
 async function scheduleRetry(paths, sessionID, client, reason, predecessorArmPid) {
   if (child || retryTimer) return;
+  if (failureEpisode) return;
   if (!(await sessionOwnsLock(paths))) {
     setArmStatus("failed");
     surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode cannot restore continuity because this session no longer owns the lock\n${reason}`);
@@ -388,6 +398,7 @@ async function scheduleRetry(paths, sessionID, client, reason, predecessorArmPid
   }
   retryFailures += 1;
   if (retryFailures > REARM_RETRY_LIMIT) {
+    failureEpisode = true;
     setArmStatus("failed");
     surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode could not restore watcher continuity after ${REARM_RETRY_LIMIT} retries\n${reason}`);
     return;
@@ -470,6 +481,7 @@ function spawnArm(paths, sessionID, client, predecessorArmPid = "") {
     if (classification.kind === "actionable") {
       if (restorationInFlight) return;
       retryFailures = 0;
+      failureEpisode = false;
       setArmStatus("wake");
       const restoration = restoreAfterActionableClose(paths, sessionID, client, predecessor);
       restorationInFlight = restoration;
@@ -579,9 +591,15 @@ function trackRootSession(event) {
 // an unowned lock, a non-primary root, and an in-flight launch are never
 // disturbed; a session id is still required to deliver a later wake.
 function startWatchdog(paths, client) {
+  const graceSeconds = positiveInteger("FM_GUARD_GRACE", pollDerivedGrace());
   const timer = setInterval(() => {
+    if (beaconFresh(paths, graceSeconds)) {
+      retryFailures = 0;
+      failureEpisode = false;
+      return;
+    }
     if (child || retryTimer || launchInFlight || restorationInFlight) return;
-    if (beaconFresh(paths, WATCHDOG_GRACE_SECONDS)) return;
+    if (failureEpisode) return;
     if (!currentSessionID) return;
     void ensureArm(paths, currentSessionID, client);
   }, WATCHDOG_INTERVAL_MS);
