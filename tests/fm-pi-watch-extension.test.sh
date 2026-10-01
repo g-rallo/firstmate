@@ -4452,6 +4452,9 @@ if (!existsSync(process.env.FM_ARM_LOG)) {
 }
 const arms = readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n").filter((row) => row === "arm");
 if (arms.length !== 1) throw new Error(`watchdog started ${arms.length} arm cycles: ${arms.join(" | ")}`);
+// A fresh beacon keeps the watchdog from spawning a successor arm once this
+// one stops, so no fake arm outlives the test harness.
+writeFileSync(`${process.env.FM_HOME}/state/.last-watcher-beat`, "");
 writeFileSync(process.env.FM_STOP_FILE, "stop\n");
 await new Promise((resolve) => setTimeout(resolve, 80));
 EOF
@@ -4510,6 +4513,9 @@ for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
 if (!existsSync(process.env.FM_ARM_LOG)) throw new Error("watchdog never re-armed after the beacon went stale");
 const arms = readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n").filter((row) => row === "arm");
 if (arms.length !== 1) throw new Error(`watchdog started ${arms.length} arm cycles: ${arms.join(" | ")}`);
+// A fresh beacon keeps the watchdog from spawning a successor arm once this
+// one stops, so no fake arm outlives the test harness.
+writeFileSync(`${process.env.FM_HOME}/state/.last-watcher-beat`, "");
 writeFileSync(process.env.FM_STOP_FILE, "stop\n");
 await new Promise((resolve) => setTimeout(resolve, 80));
 EOF
@@ -4565,6 +4571,9 @@ for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
 if (!existsSync(process.env.FM_ARM_LOG)) throw new Error("watchdog never re-armed after the session lock matched");
 const arms = readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n").filter((row) => row === "arm");
 if (arms.length !== 1) throw new Error(`watchdog started ${arms.length} arm cycles: ${arms.join(" | ")}`);
+// A fresh beacon keeps the watchdog from spawning a successor arm once this
+// one stops, so no fake arm outlives the test harness.
+writeFileSync(`${process.env.FM_HOME}/state/.last-watcher-beat`, "");
 writeFileSync(process.env.FM_STOP_FILE, "stop\n");
 await new Promise((resolve) => setTimeout(resolve, 80));
 EOF
@@ -4629,6 +4638,9 @@ for (let i = 0; i < 250 && promptSessions.length === 0; i += 1) {
 }
 if (promptSessions.length !== 1) throw new Error(`expected one wake prompt, got ${promptSessions.length}`);
 if (promptSessions[0] !== "root-session") throw new Error(`wake was delivered to ${promptSessions[0]}, not the root session`);
+// A fresh beacon keeps the watchdog from spawning a successor arm once this
+// one stops, so no fake arm outlives the test harness.
+writeFileSync(`${process.env.FM_HOME}/state/.last-watcher-beat`, "");
 writeFileSync(process.env.FM_STOP_FILE, "stop\n");
 await new Promise((resolve) => setTimeout(resolve, 80));
 EOF
@@ -4693,6 +4705,9 @@ for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
 if (!existsSync(process.env.FM_ARM_LOG)) throw new Error("watchdog never re-armed after the beacon went stale");
 const arms = readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n").filter((row) => row === "arm");
 if (arms.length !== 1) throw new Error(`watchdog started ${arms.length} arm cycles: ${arms.join(" | ")}`);
+// A fresh beacon keeps the watchdog from spawning a successor arm once this
+// one stops, so no fake arm outlives the test harness.
+writeFileSync(beat, "");
 writeFileSync(process.env.FM_STOP_FILE, "stop\n");
 await new Promise((resolve) => setTimeout(resolve, 80));
 EOF
