@@ -4718,6 +4718,71 @@ EOF
   pass "OpenCode watchdog honors the poll-derived grace and still recovers a stale beacon"
 }
 
+# An explicit FM_WATCHER_STALE_GRACE is the watcher's own stale threshold, so
+# the watchdog must resolve it first: a beacon the watcher still treats as fresh
+# must not be restarted; the same watchdog must still recover once it is stale.
+test_opencode_watchdog_uses_watcher_stale_grace_override() {
+  local plugin repo home log stop out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  repo="$TMP_ROOT/opencode-watchdog-stale-grace-root"
+  home="$TMP_ROOT/opencode-watchdog-stale-grace-home"
+  log="$TMP_ROOT/opencode-watchdog-stale-grace.log"
+  stop="$TMP_ROOT/opencode-watchdog-stale-grace.stop"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  : > "$home/state/task.meta"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'arm\n' >> "${FM_ARM_LOG:?}"
+printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" FM_OPENCODE_WATCHDOG_INTERVAL_MS=20 FM_WATCHER_STALE_GRACE=1800 node 2>&1 <<'EOF'
+import { existsSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+const client = { session: { promptAsync: async () => {} } };
+const hooks = await mod.FmPrimaryWatchArm({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+// A 400s-old beacon is older than a flat 300s grace but younger than the
+// FM_WATCHER_STALE_GRACE=1800 override the watcher itself uses, so the live
+// watcher must be left alone.
+const beat = `${process.env.FM_HOME}/state/.last-watcher-beat`;
+writeFileSync(beat, "");
+const past = Date.now() / 1000 - 400;
+utimesSync(beat, past, past);
+await hooks.event({ event: { type: "session.created", properties: { sessionID: "session-test", info: { id: "session-test" } } } });
+for (let i = 0; i < 15; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+if (existsSync(process.env.FM_ARM_LOG)) throw new Error("watchdog restarted a watcher under the FM_WATCHER_STALE_GRACE override");
+// The beacon is now genuinely stale: the same watchdog must recover.
+unlinkSync(beat);
+for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+if (!existsSync(process.env.FM_ARM_LOG)) throw new Error("watchdog never re-armed after the beacon went stale");
+const arms = readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n").filter((row) => row === "arm");
+if (arms.length !== 1) throw new Error(`watchdog started ${arms.length} arm cycles: ${arms.join(" | ")}`);
+// A fresh beacon keeps the watchdog from spawning a successor arm once this
+// one stops, so no fake arm outlives the test harness.
+writeFileSync(beat, "");
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+await new Promise((resolve) => setTimeout(resolve, 80));
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode watchdog must honor the FM_WATCHER_STALE_GRACE override instead of a flat 300: $out"
+  [ -z "$out" ] || fail "OpenCode watchdog watcher-stale-grace test printed output: $out"
+  pass "OpenCode watchdog honors the FM_WATCHER_STALE_GRACE override and still recovers a stale beacon"
+}
+
 # Once the bounded continuity retry is exhausted and its failure surfaced, the
 # watchdog must not keep spawning arms or queueing a failure prompt every
 # interval; the stale-beacon recovery that started the episode must still work.
@@ -4893,5 +4958,6 @@ test_opencode_watchdog_skips_healthy_watcher
 test_opencode_watchdog_skips_foreign_lock
 test_opencode_watchdog_delivers_to_root_session_not_child
 test_opencode_watchdog_uses_poll_derived_grace
+test_opencode_watchdog_uses_watcher_stale_grace_override
 test_opencode_watchdog_honors_bounded_retry_limit
 test_opencode_watchdog_honors_bounded_retry_during_fresh_beacon

@@ -31,9 +31,9 @@ const REARM_RETRY_LIMIT = positiveInteger("FM_WATCH_REARM_RETRY_LIMIT", 5);
 // (continuously busy, or recreated without an idle cycle) can leave the watcher
 // dark indefinitely. The watchdog re-arms off beacon freshness instead, reading
 // the same `state/.last-watcher-beat` liveness signal bin/fm-watch-arm.sh and
-// bin/fm-guard.sh use and resolving FM_GUARD_GRACE through the same poll-derived
-// default. The interval stays a small fraction of the grace window so recovery
-// is prompt.
+// bin/fm-guard.sh use and resolving the grace through the watcher's own
+// precedence. The interval stays a small fraction of the grace window so
+// recovery is prompt.
 const WATCHDOG_INTERVAL_MS = positiveInteger("FM_OPENCODE_WATCHDOG_INTERVAL_MS", 30000);
 
 // A healthy watcher touches its beacon once per poll cycle, so its beacon can
@@ -42,6 +42,12 @@ const WATCHDOG_INTERVAL_MS = positiveInteger("FM_OPENCODE_WATCHDOG_INTERVAL_MS",
 // flat 300 would restart a healthy long-poll watcher.
 function pollDerivedGrace() {
   return Math.max(300, positiveInteger("FM_POLL", 15) + 60);
+}
+
+// The watcher's stale threshold precedence (bin/fm-watch.sh): an explicit
+// FM_WATCHER_STALE_GRACE, else FM_GUARD_GRACE, else the poll-derived default.
+function watchdogGraceSeconds() {
+  return positiveInteger("FM_WATCHER_STALE_GRACE", positiveInteger("FM_GUARD_GRACE", pollDerivedGrace()));
 }
 
 let child = null;
@@ -591,7 +597,7 @@ function trackRootSession(event) {
 // an unowned lock, a non-primary root, and an in-flight launch are never
 // disturbed; a session id is still required to deliver a later wake.
 function startWatchdog(paths, client) {
-  const graceSeconds = positiveInteger("FM_GUARD_GRACE", pollDerivedGrace());
+  const graceSeconds = watchdogGraceSeconds();
   const timer = setInterval(() => {
     if (child || retryTimer || launchInFlight || restorationInFlight) return;
     if (beaconFresh(paths, graceSeconds)) {
