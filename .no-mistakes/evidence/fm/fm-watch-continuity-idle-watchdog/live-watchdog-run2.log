@@ -1,0 +1,39 @@
+--- event types observed ---
+      2 catalog.updated
+      1 integration.updated
+      1 message.part.updated
+      2 message.updated
+     45 plugin.added
+      1 project.directories.updated
+      1 reference.updated
+      1 session.created
+      1 session.status
+      1 session.updated
+--- watch-cycle-exits.log ---
+(none)
+--- pane tail ---
+
+  ┃
+  ┃  You must run the exact shell command 'sleep 300' using the bash tool and
+  ┃  wait for it to complete before you respond. Do not do anything else.
+  ┃
+
+     ▣  Build · DeepSeek V4.1 Flash
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build auto · DeepSeek V4.1 Flash OpenCode Zen
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   ⬝⬝⬝⬝⬝⬝■■  esc interrupt                         tab agents  ctrl+p commands
+
+RESULT=PASS watchdog-armed-during-busy-turn-without-idle watcher_pid=1527276

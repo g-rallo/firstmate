@@ -1,0 +1,23 @@
+--- event types ---
+      2 catalog.updated
+      1 integration.updated
+      1 message.part.updated
+      2 message.updated
+     45 plugin.added
+      1 project.directories.updated
+      1 reference.updated
+      1 session.created
+      1 session.status
+      1 session.updated
+--- timing ---
+session.created=1790921394784 arm_at=1790921397137125371 delta_ms=1790919606215730587
+--- watcher ---
+bash /tmp/fm-lab.fMTJnh/project/bin/fm-watch.sh
+--- arm parent ---
+bash /tmp/fm-lab.fMTJnh/project/bin/fm-watch-arm.sh --restart
+--- ancestry ---
+    PID    PPID COMMAND
+1534734 1534733 bash -lc printf "%s\n" "$$" > "$FM_HOME/state/.lock"; opencode --auto; printf "OPENCODE_EXIT=%s\n" "$?"; sleep 120
+1535160 1534746 bash /tmp/fm-lab.fMTJnh/project/bin/fm-watch-arm.sh --restart
+1535190 1535160 bash /tmp/fm-lab.fMTJnh/project/bin/fm-watch.sh
+RESULT=PASS watchdog-armed-without-idle delta_ms=1790919606215730587

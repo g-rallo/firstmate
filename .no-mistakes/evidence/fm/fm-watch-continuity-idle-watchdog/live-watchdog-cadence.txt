@@ -1,0 +1,95 @@
+LAB=/tmp/fm-lab.fMTJnh
+session.created=1790921394784 arm_at=1790921397137125371 delta_ms=1790919606215730587
+watcher_pid=1535190 arm_pid=1535160 opencode_lock_pid=1534734
+idle_before_arm=no
+--- watcher ---
+bash /tmp/fm-lab.fMTJnh/project/bin/fm-watch.sh
+--- arm parent ---
+bash /tmp/fm-lab.fMTJnh/project/bin/fm-watch-arm.sh --restart
+--- ancestry ---
+    PID    PPID COMMAND
+1534734 1534733 bash -lc printf "%s\n" "$$" > "$FM_HOME/state/.lock"; opencode --auto; printf "OPENCODE_EXIT=%s\n" "$?"; sleep 120
+1535160 1534746 bash /tmp/fm-lab.fMTJnh/project/bin/fm-watch-arm.sh --restart
+1535190 1535160 bash /tmp/fm-lab.fMTJnh/project/bin/fm-watch.sh
+--- events.log ---
+1790921392472 plugin.added
+1790921392476 plugin.added
+1790921392478 plugin.added
+1790921392482 plugin.added
+1790921392492 plugin.added
+1790921392494 plugin.added
+1790921392496 plugin.added
+1790921392498 plugin.added
+1790921392505 plugin.added
+1790921392511 plugin.added
+1790921392514 plugin.added
+1790921392517 plugin.added
+1790921392541 plugin.added
+1790921392543 plugin.added
+1790921392544 plugin.added
+1790921392547 plugin.added
+1790921392552 plugin.added
+1790921392553 plugin.added
+1790921392566 plugin.added
+1790921392569 plugin.added
+1790921392570 plugin.added
+1790921392571 plugin.added
+1790921392573 plugin.added
+1790921392585 plugin.added
+1790921392674 plugin.added
+1790921392677 plugin.added
+1790921392680 plugin.added
+1790921392681 plugin.added
+1790921392682 plugin.added
+1790921392692 plugin.added
+1790921392693 plugin.added
+1790921392700 plugin.added
+1790921392707 plugin.added
+1790921392719 plugin.added
+1790921392744 plugin.added
+1790921392765 plugin.added
+1790921392774 plugin.added
+1790921394697 catalog.updated
+1790921394699 plugin.added
+1790921394699 plugin.added
+1790921394700 plugin.added
+1790921394701 plugin.added
+1790921394710 plugin.added
+1790921394713 plugin.added
+1790921394716 plugin.added
+1790921394720 plugin.added
+1790921394724 reference.updated
+1790921394784 session.created
+1790921394831 message.updated
+1790921394843 message.part.updated
+1790921394854 session.updated
+1790921394867 session.status
+1790921394884 message.updated
+1790921395283 integration.updated
+1790921396291 catalog.updated
+1790921396465 project.directories.updated
+--- pane tail ---
+
+  ┃
+  ┃  You must run the exact shell command 'sleep 300' using the bash tool and
+  ┃  wait for it to complete before you respond. Do not do anything else.
+  ┃
+
+     ▣  Build · DeepSeek V4.1 Flash
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build auto · DeepSeek V4.1 Flash OpenCode Zen
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   ⬝⬝⬝⬝⬝⬝⬝⬝  esc interrupt                         tab agents  ctrl+p commands
+

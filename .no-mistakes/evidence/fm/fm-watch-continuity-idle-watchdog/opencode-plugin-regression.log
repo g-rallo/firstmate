@@ -1,0 +1,27 @@
+ok - OpenCode plugins have an explicit ESM boundary even under a typeless parent package
+ok - OpenCode watcher plugin uses the effective FM_HOME state
+ok - OpenCode watcher plugin sources the effective config
+ok - OpenCode watcher plugin requires session lock ownership
+ok - OpenCode watcher coordinator respects primary scope
+ok - OpenCode watcher plugin starts one successor before wake prompt delivery settles
+ok - OpenCode watcher plugin runs the supervision host on an opted-in home and relays every host line (away record)
+ok - OpenCode watcher plugin runs the supervision host on an opted-in home and relays every host line (quiet record)
+ok - OpenCode pre-ready actionable close preserves its successor
+ok - OpenCode hung successor falls back to one typed actionable wake
+ok - OpenCode unretired successor falls back without an overlapping retry
+ok - OpenCode late unretired closes resume classified supervision
+ok - OpenCode clean empty close triggers a bounded continuity retry
+ok - OpenCode established clean closes stop at the configured retry limit
+ok - OpenCode close handler verifies session-lock ownership before successor launch
+ok - OpenCode watcher plugin coordinates with the turn-end guard
+ok - OpenCode healthy arm output does not suppress the turn-end guard
+ok - OpenCode watchdog re-arms supervision off a stale beacon without session.idle
+ok - OpenCode watchdog skips a healthy watcher and recovers once the beacon is stale
+ok - OpenCode watchdog skips a foreign lock and recovers once this session owns it
+ok - OpenCode watchdog delivers its wake to the root session, not a subagent child
+ok - OpenCode watchdog learns the root session from session.updated and ignores a child
+ok - OpenCode watchdog ignores a child session.idle id from the turn-end coordinator
+ok - OpenCode watchdog honors the poll-derived grace and still recovers a stale beacon
+ok - OpenCode watchdog honors the FM_WATCHER_STALE_GRACE override and still recovers a stale beacon
+ok - OpenCode watchdog honors the bounded retry limit after a stale-beacon recovery
+ok - OpenCode watchdog honors the bounded retry limit during a fresh leftover beacon

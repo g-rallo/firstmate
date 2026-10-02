@@ -1,0 +1,2 @@
+base => DARK: no arm spawned without session.idle
+fixed => ARMED count=1

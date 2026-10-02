@@ -1,0 +1,10 @@
+ok - OpenCode watchdog re-arms supervision off a stale beacon without session.idle
+ok - OpenCode watchdog skips a healthy watcher and recovers once the beacon is stale
+ok - OpenCode watchdog skips a foreign lock and recovers once this session owns it
+ok - OpenCode watchdog delivers its wake to the root session, not a subagent child
+ok - OpenCode watchdog learns the root session from session.updated and ignores a child
+ok - OpenCode watchdog ignores a child session.idle id from the turn-end coordinator
+ok - OpenCode watchdog honors the poll-derived grace and still recovers a stale beacon
+ok - OpenCode watchdog honors the FM_WATCHER_STALE_GRACE override and still recovers a stale beacon
+ok - OpenCode watchdog honors the bounded retry limit after a stale-beacon recovery
+ok - OpenCode watchdog honors the bounded retry limit during a fresh leftover beacon

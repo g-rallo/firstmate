@@ -1,0 +1,33 @@
+Live OpenCode TUI watchdog proof (target commit 7b1d1a3)
+=========================================================
+
+Environment: OpenCode 1.18.34 (normal machine login), isolated lab home minted
+with `bin/fm-lab-home.sh create`, private tmux socket (`TMUX_TMPDIR`), a fresh
+clone of the run worktree as the project. `FM_WATCHER_STALE_GRACE=1`,
+`FM_OPENCODE_WATCHDOG_INTERVAL_MS=3000`, `FM_POLL=1`. A lab-only observer plugin
+logged every OpenCode event; no prompt-level session.idle was possible because the
+single prompt kept the turn busy (`sleep 300` via the bash tool).
+
+Observed event types (no session.idle at all):
+      1 session.created
+      1 session.status
+      1 session.updated
+      2 message.updated
+      1 message.part.updated
+      ... plugin.added / catalog.updated / etc.
+
+Watchdog result: `.watch.lock/pid` appeared while the session stayed busy.
+Process ancestry proves the plugin (not the model) armed it:
+
+  PID    PPID   COMMAND
+  1534734 1534733  bash -lc ... opencode --auto   (the .lock pid: opencode's parent shell)
+  1535160 1534746  bash <project>/bin/fm-watch-arm.sh --restart
+  1535190 1535160  bash <project>/bin/fm-watch.sh
+
+`arm_at` was captured with `date +%s%3N`, which emitted full nanoseconds on this
+host, so the raw delta field in live-watchdog-cadence.txt is a harness-measurement
+artifact, not a product value. Correctly read, session.created=1790921394784 ms
+(1790921394.784 s) and arm_at=1790921397137125371 ns (1790921397.137 s): the arm
+appeared ~2.35 s after session.created, i.e. on the next 3 s watchdog tick.
+
+RESULT: PASS - the OpenCode plugin re-armed supervision with no session.idle.

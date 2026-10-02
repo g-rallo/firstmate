@@ -1,0 +1,85 @@
+LAB=/tmp/fm-lab.q5zL5l
+TMUXDIR=/tmp/fml.BSQSzv
+--- pane after TUI start ---
+
+                                                      ▄
+                     █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█
+                     █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀
+                     ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀
+
+
+   ┃
+   ┃  Ask anything… "Fix broken tests"
+   ┃
+   ┃  Build auto · Big Pickle OpenCode Zen
+   ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                   tab agents  ctrl+p commands
+
+
+
+
+
+  /tmp/fm-lab.q5zL5l/project                                           1.18.34
+
+--- events.log ---
+1790921175777 plugin.added
+1790921175784 plugin.added
+1790921175785 plugin.added
+1790921175786 plugin.added
+1790921175798 plugin.added
+1790921175817 plugin.added
+1790921175818 plugin.added
+1790921175823 plugin.added
+1790921175824 plugin.added
+1790921175826 plugin.added
+1790921175827 plugin.added
+1790921175828 plugin.added
+1790921175852 plugin.added
+1790921175855 plugin.added
+1790921175857 plugin.added
+1790921175858 plugin.added
+1790921175860 plugin.added
+1790921175860 plugin.added
+1790921175861 plugin.added
+1790921175863 plugin.added
+1790921175865 plugin.added
+1790921175871 plugin.added
+1790921175873 plugin.added
+1790921175874 plugin.added
+1790921175889 plugin.added
+1790921175911 plugin.added
+1790921175912 plugin.added
+1790921175913 plugin.added
+1790921175914 plugin.added
+1790921175918 plugin.added
+1790921175918 plugin.added
+1790921175919 plugin.added
+1790921175920 plugin.added
+1790921175921 plugin.added
+1790921175922 plugin.added
+1790921175923 plugin.added
+1790921175924 plugin.added
+1790921176541 catalog.updated
+1790921176547 plugin.added
+1790921176547 plugin.added
+1790921176548 plugin.added
+1790921176549 plugin.added
+1790921176549 plugin.added
+1790921176552 plugin.added
+1790921176553 plugin.added
+1790921176554 plugin.added
+1790921176556 reference.updated
+1790921176685 integration.updated
+1790921176927 catalog.updated
+--- watch.lock/pid ---
+(none)
+--- watch-cycle-exits.log ---
+(none)
+--- state dir ---
+total 12
+drwxrwxr-x 2 gilrallo gilrallo 100 Oct  2 08:05 .
+drwx------ 7 gilrallo gilrallo 180 Oct  2 08:06 ..
+-rw------- 1 gilrallo gilrallo  16 Oct  2 08:05 .fm-lab-tmux-dir
+-rw-rw-r-- 1 gilrallo gilrallo   8 Oct  2 08:05 .lock
+-rw-rw-r-- 1 gilrallo gilrallo  16 Oct  2 08:05 opencode-live.meta
+RESULT=FAIL no-watcher-started
