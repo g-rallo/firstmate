@@ -3731,7 +3731,7 @@ if (hosts.length !== 2) throw new Error(`expected the host and one successor hos
 if (!hosts.every((row) => / args=park --restart primary=opencode /.test(row))) throw new Error(`the host must run as 'park --restart' with the opencode pin: ${hosts.join(" | ")}`);
 if (!/predecessor=[0-9]+$/.test(hosts[1])) throw new Error(`the successor host did not receive the closed host as its predecessor: ${hosts[1]}`);
 if (!rows.some((row) => row === "confirmed generation=fixture-generation watcher=" + hosts[1].replace(/^host=([0-9]+).*/, "$1"))) {
-  throw new Error(`the handling handoff was not confirmed against the successor host's cycle: ${rows.join(" | ")}`);
+  throw new Error(`the handling handoff was not confirmed against the successor host cycle: ${rows.join(" | ")}`);
 }
 if (prompts.length !== 1) throw new Error(`expected one wake prompt, got ${prompts.length}`);
 for (const needle of [
@@ -4563,7 +4563,7 @@ writeFileSync(`${process.env.FM_HOME}/state/.lock`, "999999\n");
 await hooks.event({ event: { type: "session.created", properties: { sessionID: "session-test", info: { id: "session-test" } } } });
 for (let i = 0; i < 15; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
 if (existsSync(process.env.FM_ARM_LOG)) throw new Error("watchdog armed without owning the session lock");
-// The lock is now this session's: the same watchdog must recover.
+// The lock is now this session: the same watchdog must recover.
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -4960,8 +4960,8 @@ const hooks = await mod.FmPrimaryWatchArm({
 });
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 // No session.idle and no beacon: the watchdog must start the first arm off the
-// stale beacon, and that arm's empty close must run the bounded retry path to
-// exhaustion.
+// stale beacon, and the empty close of that arm must run the bounded retry
+// path to exhaustion.
 await hooks.event({ event: { type: "session.created", properties: { sessionID: "session-test", info: { id: "session-test" } } } });
 for (let i = 0; i < 250 && prompts === 0; i += 1) {
   await new Promise((resolve) => setTimeout(resolve, 10));
@@ -4984,8 +4984,9 @@ EOF
 }
 
 # A dead watcher can leave state/.last-watcher-beat fresh for the whole grace
-# window. That leftover beacon must not reset the bounded retry budget while a
-# launch or retry is still in flight, or the watchdog would spawn arms past the
+# window. That leftover beacon must not reset the bounded retry budget, even
+# once it ages out: the exhausted episode stays terminal until a watcher
+# actually touches the beacon again, or the watchdog would spawn arms past the
 # limit and queue a failure prompt every interval. The explicit session.idle
 # trigger starts the episode because a fresh beacon keeps the watchdog quiet.
 test_opencode_watchdog_honors_bounded_retry_during_fresh_beacon() {
@@ -5007,7 +5008,7 @@ exit 0
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
   out=$(PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" FM_OPENCODE_WATCHDOG_INTERVAL_MS=20 FM_GUARD_GRACE=600 FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 FM_WATCH_REARM_RETRY_LIMIT=2 node 2>&1 <<'EOF'
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
@@ -5030,18 +5031,26 @@ for (let i = 0; i < 400 && prompts === 0; i += 1) {
   await new Promise((resolve) => setTimeout(resolve, 10));
 }
 if (prompts !== 1) throw new Error(`expected one exhausted-retry prompt, got ${prompts}`);
-for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+// Let a few watchdog intervals pass while the leftover beacon is still fresh:
+// the old code cleared the terminal episode here just because it was fresh.
+for (let i = 0; i < 4; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+// The leftover beacon is now genuinely stale. The terminal failure state must
+// hold: the watchdog must not spawn another arm or queue a second prompt.
+const beat = `${process.env.FM_HOME}/state/.last-watcher-beat`;
+const past = Date.now() / 1000 - 100000;
+utimesSync(beat, past, past);
+for (let i = 0; i < 30; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
 const rows = existsSync(process.env.FM_ARM_LOG)
   ? readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n").filter(Boolean)
   : [];
-if (rows.length !== 3) throw new Error(`bounded retry launched ${rows.length} arm cycles: ${rows.join(" | ")}`);
-if (prompts !== 1) throw new Error(`exhausted retry queued ${prompts} failure prompts`);
+if (rows.length !== 3) throw new Error(`a stale leftover beacon reopened the failed episode: ${rows.length} arm cycles: ${rows.join(" | ")}`);
+if (prompts !== 1) throw new Error(`a stale leftover beacon queued ${prompts} failure prompts`);
 EOF
 )
   status=$?
   expect_code 0 "$status" "OpenCode watchdog must honor the bounded retry limit while a dead watcher's beacon is still fresh: $out"
   [ -z "$out" ] || fail "OpenCode watchdog fresh-beacon bounded-retry test printed output: $out"
-  pass "OpenCode watchdog honors the bounded retry limit during a fresh leftover beacon"
+  pass "OpenCode watchdog keeps a failed episode terminal when a leftover fresh beacon ages out"
 }
 
 test_pi_extension_reports_external_healthy_watcher

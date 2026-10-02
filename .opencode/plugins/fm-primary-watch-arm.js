@@ -57,6 +57,7 @@ let retryTimer = null;
 let retryPending = false;
 let retryFailures = 0;
 let failureEpisode = false;
+let failureEpisodeAt = 0;
 let launchInFlight = null;
 let restorationInFlight = null;
 let armClose = new WeakMap();
@@ -408,6 +409,7 @@ async function scheduleRetry(paths, sessionID, client, reason, predecessorArmPid
     retryFailures += 1;
     if (retryFailures > REARM_RETRY_LIMIT) {
       failureEpisode = true;
+      failureEpisodeAt = Date.now();
       setArmStatus("failed");
       surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode could not restore watcher continuity after ${REARM_RETRY_LIMIT} retries\n${reason}`);
       return;
@@ -494,6 +496,7 @@ function spawnArm(paths, sessionID, client, predecessorArmPid = "") {
       if (restorationInFlight) return;
       retryFailures = 0;
       failureEpisode = false;
+      failureEpisodeAt = 0;
       setArmStatus("wake");
       const restoration = restoreAfterActionableClose(paths, sessionID, client, predecessor);
       restorationInFlight = restoration;
@@ -578,13 +581,17 @@ async function ensureArm(paths, sessionID, client, predecessorArmPid = "", inclu
 
 // The watcher's liveness beacon: a beacon younger than the grace window means a
 // live cycle, and its absence or age means no healthy watcher owns supervision.
-function beaconFresh(paths, graceSeconds) {
+function beaconMtimeMs(paths) {
   try {
-    const ageSeconds = (Date.now() - statSync(`${paths.state}/.last-watcher-beat`).mtimeMs) / 1000;
-    return ageSeconds < graceSeconds;
+    return statSync(`${paths.state}/.last-watcher-beat`).mtimeMs;
   } catch {
-    return false;
+    return 0;
   }
+}
+
+function beaconFresh(paths, graceSeconds) {
+  const mtime = beaconMtimeMs(paths);
+  return mtime > 0 && (Date.now() - mtime) / 1000 < graceSeconds;
 }
 
 // The watchdog needs the root session id to deliver a later wake. Only a root
@@ -612,8 +619,15 @@ function startWatchdog(paths, client) {
   const timer = setInterval(() => {
     if (child || retryTimer || retryPending || launchInFlight || restorationInFlight) return;
     if (beaconFresh(paths, graceSeconds)) {
-      retryFailures = 0;
-      failureEpisode = false;
+      // A fresh beacon only proves recovery when it was touched after the
+      // failure episode began. A dead watcher's leftover beacon must not reopen
+      // the terminal retry limit, or a later stale beacon restarts retries and
+      // queues a second failure prompt.
+      if (!failureEpisode || beaconMtimeMs(paths) > failureEpisodeAt) {
+        retryFailures = 0;
+        failureEpisode = false;
+        failureEpisodeAt = 0;
+      }
       return;
     }
     if (failureEpisode) return;
