@@ -428,6 +428,8 @@ The same suite covers ordinary same-process session replacement for `/new`, `/re
 - Disappearance of the shutting-down refusal after a valid replacement activates.
 - Terminal quit still refusing late rearm.
 
+It also covers OpenCode's beacon watchdog: re-arming off a stale beacon with no `session.idle`, leaving a healthy watcher and a foreign lock alone, root-only wake delivery while a subagent child session is active, the watcher's grace precedence, and the bounded-retry limit.
+
 The guard and session-start suites prove that active generation evidence tolerates a fresh-beacon handoff.
 They also prove that a legacy or handoff-phase watcher marker from an absent replacement extension still raises the outage diagnostic.
 
