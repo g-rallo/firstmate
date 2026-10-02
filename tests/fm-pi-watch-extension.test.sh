@@ -4719,6 +4719,81 @@ EOF
   pass "OpenCode watchdog learns the root session from session.updated and ignores a child"
 }
 
+# The turn-end coordinator is invoked with the raw session.idle id, which carries
+# no parentID. A subagent child idle must never become the watchdog's wake
+# target, so the coordinator must not teach the plugin that id; with no
+# root-verified session the watchdog stays quiet instead of prompting the child.
+test_opencode_watchdog_child_idle_cannot_clobber_root() {
+  local arm_plugin guard_plugin repo home log stop out status
+  arm_plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  guard_plugin="$ROOT/.opencode/plugins/fm-primary-turnend-guard.js"
+  repo="$TMP_ROOT/opencode-watchdog-child-idle-root"
+  home="$TMP_ROOT/opencode-watchdog-child-idle-home"
+  log="$TMP_ROOT/opencode-watchdog-child-idle.log"
+  stop="$TMP_ROOT/opencode-watchdog-child-idle.stop"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --handling-delivered ]; then
+  exit 0
+fi
+printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+count=$(grep -c '^arm=' "$FM_ARM_LOG")
+if [ "$count" -eq 1 ]; then
+  printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+  printf 'signal: watchdog synthetic wake\n'
+  exit 0
+fi
+printf 'watcher: started pid=%s (beacon fresh) recovery-generation=fixture-generation\n' "$$"
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
+SH
+  cat > "$repo/bin/fm-turnend-guard.sh" <<'SH'
+#!/usr/bin/env bash
+cat > /dev/null
+exit 0
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh" "$repo/bin/fm-turnend-guard.sh"
+  out=$(ARM_PLUGIN="$arm_plugin" GUARD_PLUGIN="$guard_plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" FM_OPENCODE_WATCHDOG_INTERVAL_MS=20 node 2>&1 <<'EOF'
+import { writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const armMod = await import(pathToFileURL(process.env.ARM_PLUGIN).href);
+const guardMod = await import(pathToFileURL(process.env.GUARD_PLUGIN).href);
+const promptSessions = [];
+const client = { session: { promptAsync: async (request) => { promptSessions.push(request.path.id); } } };
+await armMod.FmPrimaryWatchArm({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+const guardHooks = await guardMod.FmPrimaryTurnendGuard({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+// No session.created/updated yet: the coordinator is called with a raw
+// subagent child idle id that carries no root signal.
+await guardHooks.event({ event: { type: "session.idle", properties: { sessionID: "child-session" } } });
+// The home is now armable and the beacon is stale: a learned child id would
+// make the watchdog prompt the child.
+writeFileSync(`${process.env.FM_HOME}/state/task.meta`, "");
+for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+writeFileSync(`${process.env.FM_HOME}/state/.last-watcher-beat`, "");
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+await new Promise((resolve) => setTimeout(resolve, 80));
+if (promptSessions.length !== 0) throw new Error(`watchdog prompted ${promptSessions.join(", ")} without a root-verified session`);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode watchdog must ignore a child session.idle id from the turn-end coordinator: $out"
+  [ -z "$out" ] || fail "OpenCode watchdog child-idle test printed output: $out"
+  pass "OpenCode watchdog ignores a child session.idle id from the turn-end coordinator"
+}
+
 # A healthy watcher touches its beacon once per poll cycle, so on a long-poll
 # home its beacon legitimately ages past 300s. The watchdog must use the same
 # poll-derived grace the arm and guard use, not a flat 300 that would restart a
@@ -5026,6 +5101,7 @@ test_opencode_watchdog_skips_healthy_watcher
 test_opencode_watchdog_skips_foreign_lock
 test_opencode_watchdog_delivers_to_root_session_not_child
 test_opencode_watchdog_learns_root_from_session_updated
+test_opencode_watchdog_child_idle_cannot_clobber_root
 test_opencode_watchdog_uses_poll_derived_grace
 test_opencode_watchdog_uses_watcher_stale_grace_override
 test_opencode_watchdog_honors_bounded_retry_limit

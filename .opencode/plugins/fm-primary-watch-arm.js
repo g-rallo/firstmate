@@ -54,6 +54,7 @@ let child = null;
 let armStatus = "idle";
 let currentSessionID = "";
 let retryTimer = null;
+let retryPending = false;
 let retryFailures = 0;
 let failureEpisode = false;
 let launchInFlight = null;
@@ -395,30 +396,35 @@ async function restoreAfterActionableClose(paths, sessionID, client, predecessor
 }
 
 async function scheduleRetry(paths, sessionID, client, reason, predecessorArmPid) {
-  if (child || retryTimer) return;
+  if (child || retryTimer || retryPending || launchInFlight) return;
   if (failureEpisode) return;
-  if (!(await sessionOwnsLock(paths))) {
-    setArmStatus("failed");
-    surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode cannot restore continuity because this session no longer owns the lock\n${reason}`);
-    return;
+  retryPending = true;
+  try {
+    if (!(await sessionOwnsLock(paths))) {
+      setArmStatus("failed");
+      surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode cannot restore continuity because this session no longer owns the lock\n${reason}`);
+      return;
+    }
+    retryFailures += 1;
+    if (retryFailures > REARM_RETRY_LIMIT) {
+      failureEpisode = true;
+      setArmStatus("failed");
+      surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode could not restore watcher continuity after ${REARM_RETRY_LIMIT} retries\n${reason}`);
+      return;
+    }
+    setArmStatus("retrying");
+    const timer = setTimeout(() => {
+      if (retryTimer === timer) retryTimer = null;
+      void ensureArm(paths, sessionID, client, predecessorArmPid).then((status) => {
+        if (["armed", "starting", "wake"].includes(status)) return;
+        surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode could not launch a continuity retry (${status})`);
+      });
+    }, retryDelay(retryFailures));
+    timer.unref();
+    retryTimer = timer;
+  } finally {
+    retryPending = false;
   }
-  retryFailures += 1;
-  if (retryFailures > REARM_RETRY_LIMIT) {
-    failureEpisode = true;
-    setArmStatus("failed");
-    surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode could not restore watcher continuity after ${REARM_RETRY_LIMIT} retries\n${reason}`);
-    return;
-  }
-  setArmStatus("retrying");
-  const timer = setTimeout(() => {
-    if (retryTimer === timer) retryTimer = null;
-    void ensureArm(paths, sessionID, client, predecessorArmPid).then((status) => {
-      if (["armed", "starting", "wake"].includes(status)) return;
-      surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode could not launch a continuity retry (${status})`);
-    });
-  }, retryDelay(retryFailures));
-  timer.unref();
-  retryTimer = timer;
 }
 
 function spawnArm(paths, sessionID, client, predecessorArmPid = "") {
@@ -541,7 +547,7 @@ async function beginArm(paths, sessionID, client, predecessorArmPid) {
   if (!(await isPrimaryRoot(paths.root, paths.home))) return { status: "not-primary", armChild: null };
   if (!(await sessionOwnsLock(paths))) return { status: "read-only", armChild: null };
   if (child) return { status: "existing", armChild: child };
-  if (retryTimer) return { status: "retrying", armChild: null };
+  if (retryTimer || retryPending) return { status: "retrying", armChild: null };
   if (!shouldArm(paths)) return { status: "not-needed", armChild: null };
   return { status: "spawned", armChild: spawnArm(paths, sessionID, client, predecessorArmPid) };
 }
@@ -604,7 +610,7 @@ function trackRootSession(event) {
 function startWatchdog(paths, client) {
   const graceSeconds = watchdogGraceSeconds();
   const timer = setInterval(() => {
-    if (child || retryTimer || launchInFlight || restorationInFlight) return;
+    if (child || retryTimer || retryPending || launchInFlight || restorationInFlight) return;
     if (beaconFresh(paths, graceSeconds)) {
       retryFailures = 0;
       failureEpisode = false;
@@ -621,10 +627,7 @@ export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
   const root = worktree ? resolvePath(worktree) : await resolveRoot(directory);
   const paths = effectivePaths(root);
   globalThis[COORDINATOR_KEY] = {
-    ensureArmed: (sessionID, activeClient) => {
-      if (sessionID && !currentSessionID) currentSessionID = sessionID;
-      return ensureArm(paths, sessionID, activeClient ?? client);
-    },
+    ensureArmed: (sessionID, activeClient) => ensureArm(paths, sessionID, activeClient ?? client),
   };
   startWatchdog(paths, client);
 
